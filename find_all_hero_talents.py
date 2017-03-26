@@ -8,7 +8,8 @@ from get_data import connect_postgres
 
 def main():
     connection, session = connect_postgres()
-    session.execute("SELECT data FROM matches")
+    # Start with nearest matches as patches have tweaked talent stuff
+    session.execute("SELECT data FROM matches order by id desc")
     match_dicts = [row[0] for row in session.fetchall()]
     # with open(os.getcwd() + "/hero_ids.json", "r+") as f:
     #     heroes = json.loads(f.read())
@@ -28,27 +29,24 @@ def main():
                 continue
             talent_upgrades = [upgrade for upgrade in ability_upgrades if upgrade >= MINIMUM_TALENT_ID]
             for i, talent in enumerate(talent_upgrades):
-                #     INSERT
-                #     INTO
-                #     example_table
-                #     (id, name)
-                # SELECT
-                # 1, 'John'
-                # WHERE
-                # NOT
-                # EXISTS(
-                #     SELECT
-                # id
-                # FROM
-                # example_table
-                # WHERE
-                # id = 1
-                # );
                 # TODO should I need to index any of these columns?
-                session.execute("INSERT INTO talents (hero, level, talent) SELECT {0}, {1}, {2} "
+                try:
+                    print(player["hero_id"])
+                    print("talent: ", talent)
+                    with open("ability_ids.json", "r+") as f:
+                        talent_json = json.loads(f.read())
+                        talent_str = talent_json[str(talent)]
+
+                    with open("abilities.json", "r+") as f:
+                        abilities = json.loads(f.read())
+                        talent_long = abilities[talent_str]["dname"]
+                except:
+                    import pdb;
+                    pdb.set_trace()
+                session.execute("INSERT INTO talents (hero, level, id, name, long_name) SELECT {0}, {1}, {2}, '{3}', '{4}' "
                                 "WHERE NOT EXISTS(SELECT * FROM talents WHERE "
-                                "hero = {0} AND level = {1} AND talent = {2})".format
-                                (player["hero_id"], i + 1, talent))
+                                "hero = {0} AND level = {1} AND id = {2})".format
+                                (player["hero_id"], i + 1, talent, talent_str, talent_long))
                 connection.commit()
 
                 session.execute("SELECT COUNT(*) FROM talents WHERE hero = %s" % player["hero_id"])
