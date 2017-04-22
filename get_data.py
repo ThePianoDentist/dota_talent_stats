@@ -16,25 +16,37 @@ class MissingMatchException(Exception):
 
 def dont_piss_off_valve_but_account_for_sporadic_failures(req_url):
     succeeded = False
-    sleep_time = 3  # valve say no more than 1 per second. be safe
+    sleep_time = 1
     while not succeeded:
-        #try:
+        try:
             time.sleep(sleep_time)
             print("Requesting: %s" % req_url)
             request = Request(req_url)
             request.add_header('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36')
             response = urlopen(request)
             succeeded = True
-        # except Exception as e:
-        #     if "404" in e:
-        #         raise
-        #     sleep_time += 30  # incase script breaks dont want to spam
-        #     print(e)
-        #     print("Request failed. sleeping more")
-        #     continue
+        except Exception as e:
+            sleep_time += 30  # incase script breaks dont want to spam
+            print(e)
+            print("Request failed. sleeping more")
+            continue
     data = json.load(response)
     return data
 
+def o_dota_request(req_url):
+    succeeded = False
+    sleep_time = 1  # valve say no more than 1 per second. be safe
+    while not succeeded:
+        time.sleep(sleep_time)
+        print("Requesting: %s" % req_url)
+        request = Request(req_url)
+        request.add_header('User-Agent',
+                           'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.87 Safari/537.36')
+        response = urlopen(request)
+        succeeded = True
+        sleep_time += 30  # incase script breaks dont want to spam
+    data = json.load(response)
+    return data
 
 def get_all_leagues():
     return dont_piss_off_valve_but_account_for_sporadic_failures(LEAGUE_LISTING)["result"]["leagues"]
@@ -53,7 +65,7 @@ def get_match_details(match_id):
 
 
 def get_match_details_open_dota(match_id):
-    return dont_piss_off_valve_but_account_for_sporadic_failures(
+    return o_dota_request(
         "https://api.opendota.com/api/matches/%s" % match_id)
 
 
@@ -65,15 +77,15 @@ def get_vhigh_skill_matches(match_seq_min, hero_id, game_mode=1, skill=3):
     print(req)
     return dont_piss_off_valve_but_account_for_sporadic_failures(req)
 
-def get_match_sequence(match_seq_min=None):
+def get_match_sequence(match_seq_min=None, skill=3, game_mode=1):
     if match_seq_min:
         req = "http://api.steampowered.com/IDOTA2Match_570/GetMatchHistoryBySequenceNum/v0001?" \
-              "key=%s&start_at_match_seq_num=%s&matches_requested=25" %\
-              (APIKEY, match_seq_min)
+              "key=%s&start_at_match_seq_num=%s&matches_requested=25&skill=%d&game_mode=%d" %\
+              (APIKEY, match_seq_min, skill, game_mode)
 
     else:
         req = "http://api.steampowered.com/IDOTA2Match_570/GetMatchHistoryBySequenceNum/v0001?" \
-              "key=%s&matches_requested=25" % APIKEY
+              "key=%s&matches_requested=25&skill=3&game_mode=1" % APIKEY
     print(req)
     return dont_piss_off_valve_but_account_for_sporadic_failures(req)
 
@@ -106,12 +118,11 @@ def add_matches(session, connection, match_list_json, existing_match_ids=None, m
             print("Open dota 404 for match: ", match_id)
             continue
 
-
+        if not match_data["match_seq_num"]:
+            continue
         # Seems that may be hitting a max_size issue with postgres json?
         # It just silently fails executing the insert for 3066016949...why?
         match_seq_min = max(match_seq_min, match_data["match_seq_num"])
-        with open("/home/jdog/Documents/starttimes", "a+") as f:
-            f.write(str(match_seq_min))
         del match_data["chat"]
         del match_data["objectives"]
         del match_data["cosmetics"]
@@ -151,8 +162,8 @@ def main():
     print("Already have %s matches! :)" % len(existing_match_ids))
     #leagues = get_all_leagues()
     #match_seq_min = 3078157620
-    match_seq_min = 2684125270
-    # TODO progromatically save what match_seq_num I stopped at. (cannot just query latest match_id in db)
+    match_seq_min = 2688472694
+    # TODO actually query database to find this!!!
     while True:
         allpick_matches = get_match_sequence(match_seq_min)
         #allpick_matches = get_vhigh_skill_matches(match_seq_min, 44, game_mode=1)

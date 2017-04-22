@@ -30,7 +30,6 @@ class Model:
     @property
     def neuron_upper_limit(self):
         # TODO assumes only 1 output field
-        import pdb; pdb.set_trace()
         upper_limit = len(self.inputs) / (self.alpha * (len(self.inputs[0]) + 1))
         return upper_limit
 

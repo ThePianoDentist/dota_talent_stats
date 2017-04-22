@@ -115,12 +115,20 @@ def main():
     parser.add_argument('hero_id', default=44, help="Id of hero you are playing",
                         type=int, nargs='?')
     args = parser.parse_args()
-    model_attempts = 5
+    model_attempts = 1
     # keras extends theano
     # http://machinelearningmastery.com/introduction-python-deep-learning-library-keras/
     # http://machinelearningmastery.com/tutorial-first-neural-network-python-keras/
     connection, session = connect_postgres()
-    session.execute("SELECT data FROM matches")
+    data_query = """select player->'match_id' as match_id,
+     ((player->>'isRadiant')::boolean = (player->>'radiant_win')::boolean) as win,
+      player->'hero_id' as hero_id,
+       player->'ability_upgrades_arr' as ability_upgrades_arr
+        from (select jsonb_array_elements(data->'players') as player
+         from matches limit 300) as t;"""
+
+    """select player->'match_id' as match_id, ((player-> > 'isRadiant')::boolean = (player-> > 'radiant_win')::boolean) as win, player->'hero_id' as hero_id, player->'ability_upgrades_arr' as ability_upgrades_arr from (select json_array_elements(data->'players') as player from matches limit 300) as t;"""
+    session.execute(data_query)
     match_dicts = [row[0] for row in session.fetchall()]
     # with open(os.getcwd() + "/open_dota_example.json", "r+") as f:
     #     match_dicts = [json.loads(f.read())]
