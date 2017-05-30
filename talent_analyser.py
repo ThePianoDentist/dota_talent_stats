@@ -49,64 +49,57 @@ class Hero:
 def filter_useful_data(match_dicts, our_hero):
     inputs = []
     outputs = []
-    for d in match_dicts:
-        # hmmmmm turns out open dota api has null values (that shouldnt be null) for loads of fields
-        # this is usually null! I should bug report
-        # in meantime can work around as can still access hero_id
-        # if not d["picks_bans"]:  # TODO why no pickbans????
-        #     print("No pickban!!!")
-        #     continue
-        players = d["players"]
-        our_team = None
-        for p in players:
-            if p["hero_id"] == our_hero.id:
-                our_team = p["isRadiant"]
-                break
-        # picks = [pb for pb in d["picks_bans"] if pb["is_pick"]]
-        # our_team = None
-        # for pick in picks:
-        #     if pick["hero_id"] == our_hero.id:
-        #         our_team = pick["team"]  # 0 for radiant? 1 for dire I think
-        #         break
-        if our_team:
-            # 113 possible friendly heros. 113 possible enemies. 4 talent choices
+    current_match_id = None
+    our_team = None
+    current_match_players = []
+    for _match_id, _win, _hero_id, _ability_upgrades in match_dicts:
+        if _hero_id == our_hero.id:
+            outputs.append(1.0 if _win else 0.0)
+            our_team = _win
+        if _match_id != current_match_id:
+            # 113 possible friendly heroes. 113 possible enemies. 4 talent choices
             single_input = numpy.empty(230)
             single_input.fill(-1.0)
-            for p in players:
-                friendly = (p["isRadiant"] == our_team)
-                if p["hero_id"] != our_hero.id:
-                    single_input[DiscreteHeroModel.hero_id_to_index(p["hero_id"], our_hero.id, friendly)] = 1.0
-
-            # TODO is it possible in the game to upgrade abilities out of order?
-            ability_upgrades = [player["ability_upgrades_arr"] for player in d["players"]
-                                if player["hero_id"] == our_hero.id][0]
-            if not ability_upgrades:
-                #print("No ability upgrades!!!!!")
-                continue
-            talent_upgrades = [upgrade for upgrade in ability_upgrades if upgrade >= MINIMUM_TALENT_ID]
-            single_input[-4:] = 0.0
-            for i, talent in enumerate(talent_upgrades):
-                if talent == our_hero.talents[i][0].id:
-                    single_input[226 + i] = -1.0
-                elif talent == our_hero.talents[i][1].id:
-                    single_input[226 + i] = 1.0
-                else:
-                    # This case it seems you can skill talents out of order
-                    # i dont think we want these weeeeeeird builds in results anyway
+            for player in current_match_players:
+                if our_team is None:
                     continue
-                    # raise Exception("Talent: %s did not match any registered for hero: %s" %
-                    #                 (talent, our_hero.name))
+                friendly = our_team == player["win"]
+                # if player["hero_id"] != our_hero.id:
+                single_input[DiscreteHeroModel.hero_id_to_index(player["hero_id"], our_hero.id, friendly)] = 1.0
 
-            if numpy.count_nonzero(single_input[:-4] == 1) != 9:
-                print("No. of 1's in hero slots: ", numpy.count_nonzero(single_input[:-4] == 1))
-                continue
-                #raise Exception("Invalid number of players set")  # think have 1v1s in db
-            else:
-                inputs.append(single_input)
+                # TODO is it possible in the game to upgrade abilities out of order?
+                if not player["ability_upgrades"]:
+                    #print("No ability upgrades!!!!!")
+                    continue
+                talent_upgrades = [upgrade for upgrade in player["ability_upgrades"] if upgrade >= MINIMUM_TALENT_ID]
 
-            outputs.append(1.0 if (d["radiant_win"] == our_team) else 0.0) # todo our_team to isradiant
+                if player["hero_id"] != our_hero.id:
+                    for i, talent in enumerate(talent_upgrades):
+                        if talent == our_hero.talents[i][0].id:
+                            single_input[226 + i] = -1.0
+                        elif talent == our_hero.talents[i][1].id:
+                            single_input[226 + i] = 1.0
+                        else:
+                            # This case it seems you can skill talents out of order
+                            # i dont think we want these weeeeeeird builds in results anyway
+                            continue
+                            # raise Exception("Talent: %s did not match any registered for hero: %s" %
+                            #                 (talent, our_hero.name))
 
-    return inputs, outputs
+                if numpy.count_nonzero(single_input[:-4] == 1) != 9:
+                    #print("No. of 1's in hero slots: ", numpy.count_nonzero(single_input[:-4] == 1))
+                    continue
+                    #raise Exception("Invalid number of players set")  # think have 1v1s in db
+                else:
+                    inputs.append(single_input)
+            current_match_players = []
+            our_team = None
+
+        current_match_id = _match_id
+
+        player = {"win": _win, "hero_id": _hero_id, "ability_upgrades": _ability_upgrades}
+        current_match_players.append(player)
+    return inputs[1:-1], outputs[1:]  # hack for now. work out why one getting missed
 
 
 def main():
@@ -125,16 +118,15 @@ def main():
       player->'hero_id' as hero_id,
        player->'ability_upgrades_arr' as ability_upgrades_arr
         from (select jsonb_array_elements(data->'players') as player
-         from matches limit 300) as t;"""
+         from matches limit 500000) as t;"""
 
-    """select player->'match_id' as match_id, ((player-> > 'isRadiant')::boolean = (player-> > 'radiant_win')::boolean) as win, player->'hero_id' as hero_id, player->'ability_upgrades_arr' as ability_upgrades_arr from (select json_array_elements(data->'players') as player from matches limit 300) as t;"""
     session.execute(data_query)
-    match_dicts = [row[0] for row in session.fetchall()]
+    query_results = session.fetchall()
     # with open(os.getcwd() + "/open_dota_example.json", "r+") as f:
     #     match_dicts = [json.loads(f.read())]
     our_hero = Hero(args.hero_id, "pa", session)
     print("Analysing best talents for %s" % our_hero.name)
-    inputs, outputs = filter_useful_data(match_dicts, our_hero)
+    inputs, outputs = filter_useful_data(query_results, our_hero)
 
     def split_training_data(inputs, outputs):
         zipped = list(zip(inputs, outputs))

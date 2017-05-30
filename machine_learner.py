@@ -35,9 +35,9 @@ class Model:
 
     def evaluate(self):
         scores = self.model.evaluate(self.inputs, self.outputs)
-        print("Evaluation: \n")
-        print(scores)
-        print("%s: %.2f%%" % (self.model.metrics_names[1], scores[1] * 100))
+        # print("Evaluation: \n")
+        # print(scores)
+        # print("%s: %.2f%%" % (self.model.metrics_names[1], scores[1] * 100))
 
     def predict(self, our_hero, friendly_heroes, enemy_heroes):
         inputs = numpy.empty(230)
@@ -116,10 +116,10 @@ class DiscreteHeroModel(Model):
         # self.model.add(Dense(133, init='uniform', activation='relu'))
         # self.model.add(Dense(8, init='uniform', activation='relu'))
         self.model.add(Dense(1, init='uniform', activation='sigmoid'))
-        print(len(self.inputs))
-        print(len(self.outputs))
+        # print(len(self.inputs))
+        # print(len(self.outputs))
         self.model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-        self.model.fit(self.inputs, self.outputs, epochs=150, batch_size=10)
+        self.model.fit(self.inputs, self.outputs, epochs=150, batch_size=100)#, verbose=0)
         super().__init__(self.inputs, self.outputs, self.model, alpha, self.test_inputs, self.test_outputs)
 
     @staticmethod
